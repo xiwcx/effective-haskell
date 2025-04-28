@@ -1,12 +1,13 @@
 module Fibonacci where
 
-fibonacciInternal soughtIdx currIdx prevNum currNum =
+fibonacciInternal currIdx prevNum currNum soughtIdx =
   if soughtIdx == currIdx
     then prevNum
     else
       let nextIdx = currIdx + 1
           nextNum = prevNum + currNum
-       in fibonacciInternal soughtIdx nextIdx currNum nextNum
+       in fibonacciInternal nextIdx currNum nextNum soughtIdx
 
-fibonacci soughtIdx =
-  fibonacciInternal soughtIdx 0 0 1
+fibonacci :: Integer -> Integer
+fibonacci =
+  fibonacciInternal 0 0 1
