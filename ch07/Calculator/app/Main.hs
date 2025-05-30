@@ -11,5 +11,29 @@ stringsToInts = mapMaybe readMaybe
 printSum :: IO ()
 printSum = getArgs >>= print . sum . stringsToInts
 
+stringToOperand :: String -> Either String (Int -> Int -> Int)
+stringToOperand maybeOp =
+  case maybeOp of
+    "+" -> Right (+)
+    "-" -> Right (-)
+    "*" -> Right (*)
+    "/" -> Right div
+    _ -> Left $ "Unsupported operand: " ++ maybeOp
+
+-- apply dynamic operator recursively
+getResult :: (Int -> Int -> Int) -> [Int] -> Int
+getResult op (first : rest) = foldl op first rest
+
+printResult :: IO ()
+printResult = do
+  (maybeOperand : maybeInts) <- getArgs
+
+  let op = stringToOperand maybeOperand
+  let is = stringsToInts maybeInts
+
+  case op of
+    Right o -> print $ show (getResult o is)
+    Left msg -> putStrLn msg
+
 main :: IO ()
-main = printSum
+main = printResult
