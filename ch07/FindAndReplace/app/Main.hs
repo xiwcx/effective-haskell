@@ -16,12 +16,7 @@ parseFile needle replacement =
 
 wordReplacer :: IO ()
 wordReplacer = do
-  args <- getArgs
-
-  let path = head args
-  let needle = args !! 1
-  let replacement = args !! 2
-
+  [path, needle, replacement] <- getArgs
   pathExists <- doesFileExist path
 
   if pathExists
