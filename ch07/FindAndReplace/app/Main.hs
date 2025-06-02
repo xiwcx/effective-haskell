@@ -11,8 +11,8 @@ replaceNeedle needle replacement =
   map (\word -> if word == needle then replacement else word)
 
 parseFile :: String -> String -> String -> String
-parseFile contents needle replacement =
-  unwords . replaceNeedle needle replacement . words $ contents
+parseFile needle replacement =
+  unwords . replaceNeedle needle replacement . words
 
 wordReplacer :: IO ()
 wordReplacer = do
@@ -23,11 +23,9 @@ wordReplacer = do
   let replacement = args !! 2
 
   pathExists <- doesFileExist path
-  -- don't like this, but can't figure out how to get it in to `parseFile`
-  contents <- readFile path
 
   if pathExists
-    then putStrLn (parseFile contents needle replacement)
+    then putStrLn . parseFile needle replacement =<< readFile path
     else print "file does not exist"
 
 main :: IO ()
