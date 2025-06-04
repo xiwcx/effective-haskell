@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module HCat where
 
@@ -9,9 +10,14 @@ import qualified System.IO.Error as IOError
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
 import qualified Data.ByteString as BS
-import System.Process (readProcess)
+import qualified Data.Time.Clock as Clock
+import qualified Data.Time.Format as TimeFormat
+import qualified Data.Time.Clock.POSIX as PosixClock
+import qualified System.Directory as Directory
 import qualified System.Info as SystemInfo
+import System.Process (readProcess)
 import System.IO
+import Text.Printf
 
 data ScreenDimensions = ScreenDimensions
   { screenRows :: Int
@@ -19,6 +25,15 @@ data ScreenDimensions = ScreenDimensions
   } deriving Show
 
 data ContinueCancel = Continue | Cancel deriving (Eq, Show)
+
+data FileInfo = FileInfo
+  { filePath :: FilePath
+  , fileSize :: Int
+  , fileMTime :: Clock.UTCTime
+  , fileReadable :: Bool
+  , fileWriteable :: Bool
+  , fileExecutable :: Bool
+  } deriving Show
 
 -- truncate args to first arg
 handleArgs :: IO (Either String FilePath)
@@ -32,21 +47,20 @@ handleArgs =
         _ -> Left "multiple files not supported"
 
 runHCat :: IO ()
-runHCat =
-  handleIOError $
-    handleArgs
-    >>= eitherToErr
-    >>= flip openFile ReadMode
-    >>= TextIO.hGetContents
-    >>= \contents ->
-      getTerminalSize >>= \ termSize ->
-        let pages = paginate termSize contents
-        in showPages pages
-  where
-    handleIOError :: IO () -> IO ()
-    handleIOError ioAction =
-      Exception.catch ioAction $
-      \e -> putStrLn "I ran into an error: " >> print @IOError e
+runHCat = do
+  targetFilePath <- do
+    args <- handleArgs
+    eitherToErr args
+  
+  contents <- do
+    handle <- openFile targetFilePath ReadMode
+    TextIO.hGetContents handle
+    
+  termSize <- getTerminalSize
+  hSetBuffering stdout NoBuffering
+  finfo <- fileInfo targetFilePath
+  let pages = paginate termSize finfo contents
+  showPages pages
 
 eitherToErr :: Show a => Either a b -> IO b
 eitherToErr (Right a) = return a
@@ -75,12 +89,19 @@ wordWrap lineLength lineText
           in (wrappedLine, Text.tail rest)
         | otherwise = softWrap hardwrappedText (textIndex - 1)
 
-paginate :: ScreenDimensions -> Text.Text -> [Text.Text]
-paginate (ScreenDimensions rows cols) text =
-  let unwrappedLines = Text.lines text
-      wrappedLines = concatMap (wordWrap cols) unwrappedLines
-      pageLines = groupsOf rows wrappedLines
-  in map Text.unlines pageLines
+paginate :: ScreenDimensions -> FileInfo -> Text.Text -> [Text.Text]
+paginate (ScreenDimensions rows cols) finfo text =
+  let
+    rows' = rows - 1
+    wrappedLines = concatMap (wordWrap cols) (Text.lines text)
+    pages = map (Text.unlines . padTo rows') $ groupsOf rows' wrappedLines
+    pageCount = length pages
+    statusLines = map (formatFileInfo finfo cols pageCount) [1..pageCount]
+  in zipWith (<>) pages statusLines
+  where
+    padTo :: Int -> [Text.Text] -> [Text.Text]
+    padTo lineCount rowsToPad =
+      take lineCount $ rowsToPad <> repeat ""
 
 getTerminalSize :: IO ScreenDimensions
 getTerminalSize =
@@ -124,3 +145,48 @@ showPages (page:pages) =
 clearScreen :: IO ()
 clearScreen =
   BS.putStr "\^[[1J|^[[1;1H"
+
+fileInfo :: FilePath -> IO FileInfo
+fileInfo filePath = do
+  perms <- Directory.getPermissions filePath
+  mtime <- Directory.getModificationTime filePath
+  size <- BS.length <$> BS.readFile filePath
+  return FileInfo
+    { filePath = filePath
+    , fileSize = size
+    , fileMTime = mtime
+    , fileReadable = Directory.readable perms
+    , fileWriteable = Directory.writable perms
+    , fileExecutable = Directory.executable perms
+    }
+
+formatFileInfo :: FileInfo -> Int -> Int -> Int -> Text.Text
+formatFileInfo FileInfo{..} maxWidth totalPages currentPage =
+  let
+    permissionString =
+      [ if fileReadable then 'r' else '-'
+      , if fileWriteable then 'w' else '-'
+      , if fileExecutable then 'x' else '_' ]
+    timestamp =
+      TimeFormat.formatTime TimeFormat.defaultTimeLocale "%F %T" fileMTime
+    statusLine = Text.pack $
+      printf
+      "%s | permissions: %s | %d bytes | modified: %s | page: %d of %d"
+      filePath
+      permissionString
+      fileSize
+      timestamp
+      currentPage
+      totalPages
+  in invertText (truncateStatus statusLine)
+  where
+    invertText inputStr =
+      let
+        reverseVideo = "\^[[7m"
+        resetVideo = "\^[[0m"
+      in reverseVideo <> inputStr <> resetVideo
+    truncateStatus statusLine
+      | maxWidth <= 3 = ""
+      | Text.length statusLine > maxWidth =
+        Text.take (maxWidth - 3) statusLine <> "..."
+      | otherwise = statusLine
