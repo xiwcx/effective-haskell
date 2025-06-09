@@ -103,7 +103,7 @@ paginate (ScreenDimensions rows cols) finfo text =
     padTo lineCount rowsToPad =
       take lineCount $ rowsToPad <> repeat ""
 
--- handle missint tput with generic util
+-- handle missing tput with generic util
 readWithDefault :: String -> Int -> Int
 readWithDefault str def =
   if readInt > 0 then readInt else def
@@ -123,8 +123,8 @@ getTerminalSize =
     tputScreenDimensions = do
       lines <- readProcess "tput" ["lines"] ""
       cols <- readProcess "tput" ["cols"] ""
-      let lines' = readWithDefault (init lines) defaultLines
-          cols' = readWithDefault (init cols) defaultLines
+      let lines' = read $ init lines
+          cols' = readWithDefault (init cols) defaultCols
        in return $ ScreenDimensions lines' cols'
 
 getContinue :: IO ContinueCancel
