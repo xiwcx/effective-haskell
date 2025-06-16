@@ -83,3 +83,10 @@ uniqueNatural n (elem : elems) =
 sumOfUniqueNaturals :: Natural a -> [a] -> a
 sumOfUniqueNaturals n =
   foldr (add n) (additiveIdentity n) . uniqueNatural n
+
+-- 🤯
+-- type applications themselves can be polymorphic
+showLeftRight :: (Read a, Read b) => String -> Either a b
+showLeftRight s
+  | length s > 5 = Left (read s)
+  | otherwise = Right (read s)

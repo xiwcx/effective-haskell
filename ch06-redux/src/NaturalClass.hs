@@ -38,3 +38,14 @@ instance Natural Peano where
   multiply (S a) b = add b (multiply a b)
   additiveIdentity = Z
   multiplicativeIdentity = S Z
+
+showIdentities :: IO ()
+showIdentities =
+  let mul = multiplicativeIdentity :: Peano
+      add = additiveIdentity :: Peano
+      msg =
+        "The additive identity is: "
+          <> show add
+          <> " and the multiplicative identity is: "
+          <> show mul
+   in print msg
