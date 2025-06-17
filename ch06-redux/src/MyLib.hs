@@ -90,3 +90,61 @@ showLeftRight :: (Read a, Read b) => String -> Either a b
 showLeftRight s
   | length s > 5 = Left (read s)
   | otherwise = Right (read s)
+
+-- newtypes are zero-cost abstractions that allow one
+-- to wrap an existing type. use this when you want an
+-- underlying data structure represented by more than one
+-- type with its one name and optional type class instance
+--
+-- they must contain exactly one constructor, commonly
+-- defined in record syntax
+newtype MyEither a b = MyEither {getEither :: Either a b}
+
+newtype Product = Product {getProduct :: Int}
+
+newtype Sum = Sum {getSum :: Int}
+
+instance Semigroup Product where
+  (Product a) <> (Product b) = Product (a * b)
+
+instance Monoid Product where
+  mempty = Product 1
+
+toCSV :: (Show a) => [a] -> String
+toCSV =
+  let addField :: (Show a) => String -> a -> String
+      addField s a = s <> "," <> show a
+
+      dropLeadingComma :: String -> String
+      dropLeadingComma s =
+        case s of
+          ',' : s' -> s'
+          _ -> s
+   in dropLeadingComma . foldl addField ""
+
+data Customer = Customer
+  { name :: String,
+    mail :: String,
+    email :: String
+  }
+  deriving (Eq, Show, Ord)
+
+-- instance Eq Customer where
+--   (==)
+--     (Customer name mail email)
+--     (Customer name' mail' email') =
+--       name == name'
+--         && mail == mail'
+--         && email == email'
+
+-- instance Ord Customer where
+--   compare
+--     (Customer name mail email)
+--     (Customer name' mail' email') =
+--       compare name name'
+--         <> compare mail mail'
+--         <> compare email email'
+
+-- instance Show Customer where
+--   show (Customer name mail email) =
+--     mconcat ["Customer {name = ", show name, ", mail = ", show mail, ", email = ", show email, "}"]
