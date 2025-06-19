@@ -1,6 +1,7 @@
 module Exercises where
 
 import Data.Bifunctor
+import Data.Functor.Contravariant
 import Prelude hiding (Either)
 
 -- ==========
@@ -41,9 +42,50 @@ instance Functor (Either a) where
 
 instance Bifunctor Either where
   bimap :: (a -> b) -> (c -> d) -> Either a c -> Either b d
-  bimap f f' (Left' x) = Left' (f x)
-  bimap f f' (Right' x) = Right' (f' x)
+  bimap f _ (Left' x) = Left' (f x)
+  bimap _ f (Right' x) = Right' (f x)
   first :: (a -> b) -> Either a c -> Either b c
   first f = bimap f id
   second :: (b -> c) -> Either a b -> Either a c
   second = bimap id
+
+-- ==========
+-- Exercise 4
+-- ==========
+
+newtype Function a b = Function {runFunction :: a -> b}
+
+-- too many variables, not enough translators
+instance Contravariant (Function a) where
+  contramap :: (b -> c) -> Function a c -> Function a b
+  -- contramap f (Function g) = Function (g . f)
+  contramap f (Function g) = Function undefined
+
+newtype MyPredicate a = MyPredicate {runMyPredicate :: a -> Bool}
+
+instance Contravariant MyPredicate where
+  contramap :: (b -> a) -> MyPredicate a -> MyPredicate b
+  contramap f (MyPredicate p) = MyPredicate (p . f)
+
+-- ==========
+-- Exercise 5
+-- ==========
+
+class Profunctor f where
+  dimap :: (c -> a) -> (b -> d) -> f a b -> f c d
+  lmap :: (c -> a) -> f a b -> f c b
+  lmap f = dimap f id
+  rmap :: (b -> d) -> f a b -> f a d
+  rmap = dimap id
+
+--
+instance Profunctor Function where
+  dimap :: (c -> a) -> (b -> d) -> Function a b -> Function c d
+  dimap f f' (Function x) = Function (f' . x . f)
+  lmap :: (c -> a) -> Function a b -> Function c b
+  lmap f (Function x) = Function (x . f)
+  rmap :: (b -> d) -> Function a b -> Function a d
+  rmap f (Function x) = Function (f . x)
+
+-- instance Profunctor Either where
+--   dimap :: (c -> a) -> (b -> d) -> Either a b -> Either c d
