@@ -38,30 +38,30 @@ data FileInfo = FileInfo
   deriving (Show)
 
 -- truncate args to first arg
-handleArgs :: IO (Either String FilePath)
+handleArgs :: IO (Either String [FilePath])
 handleArgs =
   parseArgs <$> Env.getArgs
   where
     parseArgs argumentList =
       case argumentList of
-        [fname] -> Right fname
         [] -> Left "Error: No arguments provided!"
-        _ -> Left "multiple files not supported"
+        fnames -> Right fnames
 
 runHCat :: IO ()
 runHCat = do
-  targetFilePath <- do
+  targetFilePaths <- do
     args <- handleArgs
     eitherToErr args
 
   contents <- do
-    handle <- openFile targetFilePath ReadMode
-    TextIO.hGetContents handle
+    handles <- traverse (`openFile` ReadMode) targetFilePaths
+    traverse TextIO.hGetContents handles
 
   termSize <- getTerminalSize
   hSetBuffering stdout NoBuffering
-  finfo <- fileInfo targetFilePath
-  let pages = paginate termSize finfo contents
+  finfo <- traverse fileInfo targetFilePaths
+  let all = zip finfo contents
+  let pages = concatMap (uncurry (paginate termSize)) all
   showPages pages
 
 eitherToErr :: (Show a) => Either a b -> IO b
@@ -128,24 +128,26 @@ getTerminalSize =
        in return $ ScreenDimensions lines' cols'
 
 getContinue :: IO ContinueCancel
-getContinue =
+getContinue = do
   hSetBuffering stdin NoBuffering
-    >> hSetEcho stdin False
-    >> getChar
-    >>= \case
-      ' ' -> return Continue
-      'q' -> return Cancel
-      _ -> getContinue
+  hSetEcho stdin False
+  c <- getChar
+
+  case c of
+    ' ' -> return Continue
+    'q' -> return Cancel
+    _ -> getContinue
 
 showPages :: [Text.Text] -> IO ()
 showPages [] = return ()
-showPages (page : pages) =
+showPages (page : pages) = do
   clearScreen
-    >> TextIO.putStrLn page
-    >> getContinue
-    >>= \case
-      Continue -> showPages pages
-      Cancel -> return ()
+  TextIO.putStrLn page
+  c <- getContinue
+
+  case c of
+    Continue -> showPages pages
+    Cancel -> return ()
 
 clearScreen :: IO ()
 clearScreen =
