@@ -16,5 +16,6 @@ insertSorted a (Cons b bs)
 instance Functor SortedList where
   fmap :: (a -> b) -> SortedList a -> SortedList b
   fmap _ Empty = Empty
-  -- fmap f (Cons x xs) = Cons (f x) (fmap f xs)
-  fmap f (Cons x xs) = insertSorted (f x) (Cons (fmap f xs) Empty)
+  fmap f (Cons x xs) = Cons (f x) (fmap f xs)
+
+-- fmap f (Cons x xs) = insertSorted (f x) (Cons (fmap f xs) Empty)

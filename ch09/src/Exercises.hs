@@ -12,8 +12,13 @@ data List a = Empty | Cons a (List a)
 
 instance Functor List where
   -- splat handles both cases now!
+  -- fmap f m = m >>= (return . f)
   fmap f x = pure f <*> x
 
+-- why is this is possible? until Applicative was introduced in 2008
+-- this was always done with Monads which were overkill for the job
+-- as the sequencing isn't necessary here. in this instance you can
+-- use a more powerful tool tool from the same family to do the job
 instance Applicative List where
   pure :: a -> List a
   pure x = Cons x Empty
@@ -25,6 +30,8 @@ instance Applicative List where
     Cons (x' y') Empty
 
 instance Monad List where
+  return :: a -> List a
+  return = undefined
   (>>=) :: List a -> (a -> List b) -> List b
   (>>=) = undefined
 
@@ -56,6 +63,10 @@ instance Bifunctor Either where
 newtype Function a b = Function {runFunction :: a -> b}
 
 -- too many variables, not enough translators
+-- can be done with multi-param type classes (language extension)
+-- but i don't know about that yet
+-- can also be done by flipping variables in type definition:
+-- newtype Function b a = Function { runFunction :: a -> b }
 instance Contravariant (Function a) where
   contramap :: (b -> c) -> Function a c -> Function a b
   -- contramap f (Function g) = Function (g . f)

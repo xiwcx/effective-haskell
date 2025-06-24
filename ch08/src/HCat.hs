@@ -25,7 +25,7 @@ data ScreenDimensions = ScreenDimensions
   }
   deriving (Show)
 
-data ContinueCancel = Continue | Cancel deriving (Eq, Show)
+data Action = Next | Previous | Cancel deriving (Eq, Show)
 
 data FileInfo = FileInfo
   { filePath :: FilePath,
@@ -59,10 +59,15 @@ runHCat = do
 
   termSize <- getTerminalSize
   hSetBuffering stdout NoBuffering
+  -- rather than read all files at once
+  -- iterate through filenames, and read the files one at a time
   finfo <- traverse fileInfo targetFilePaths
   let all = zip finfo contents
   let pages = concatMap (uncurry (paginate termSize)) all
-  showPages pages
+  -- think about updating what i'm sending to showpages dynamically
+  -- rather than "prerendering" everything, this will help with
+  -- terminal sizing as well
+  showPages [] pages
 
 eitherToErr :: (Show a) => Either a b -> IO b
 eitherToErr (Right a) = return a
@@ -127,26 +132,31 @@ getTerminalSize =
           cols' = readWithDefault (init cols) defaultCols
        in return $ ScreenDimensions lines' cols'
 
-getContinue :: IO ContinueCancel
-getContinue = do
+getAction :: IO Action
+getAction = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
   c <- getChar
 
   case c of
-    ' ' -> return Continue
+    'p' -> return Previous
+    ' ' -> return Next
     'q' -> return Cancel
-    _ -> getContinue
+    _ -> getAction
 
-showPages :: [Text.Text] -> IO ()
-showPages [] = return ()
-showPages (page : pages) = do
+showPages :: [Text.Text] -> [Text.Text] -> IO ()
+showPages _ [] = return ()
+showPages prev (curr : next) = do
   clearScreen
-  TextIO.putStrLn page
-  c <- getContinue
+  TextIO.putStrLn curr
+  p <- getAction
 
-  case c of
-    Continue -> showPages pages
+  case p of
+    Previous -> showPages next' prev'
+      where
+        (nextPage : prev') = prev
+        next' = nextPage : (curr : prev)
+    Next -> showPages (curr : prev) next
     Cancel -> return ()
 
 clearScreen :: IO ()
