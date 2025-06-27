@@ -3,7 +3,9 @@
 module Main where
 
 import Control.Exception (IOException, handle)
+import Control.Exception.Base (FixIOException (FixIOException))
 import Control.Monad (join, unless, void, when)
+import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
 import Data.Foldable (for_)
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
@@ -15,6 +17,7 @@ import System.Directory
     doesFileExist,
     listDirectory,
   )
+import System.Directory.Internal.Prelude (modifyIOError)
 import Text.ParserCombinators.ReadP (count)
 import Text.Printf (printf)
 
@@ -51,39 +54,57 @@ naiveTraversal rootPath action = do
     fixPath parent fname = parent <> "/" <> fname
     getPaths = mapM (\path -> naiveTraversal path action)
 
-traverseDirectory :: FilePath -> (FilePath -> a) -> IO [a]
+traverseDirectory :: FilePath -> (FilePath -> IO ()) -> IO ()
 traverseDirectory rootPath action = do
   seenRef <- newIORef Set.empty
-  resultRef <- newIORef []
   let haveSeenDirectory canonicalPath =
         Set.member canonicalPath <$> readIORef seenRef
 
       addDirectoryToSeen canonicalPath =
         modifyIORef seenRef $ Set.insert canonicalPath
 
-      traverseSubDirectory subdirPath = do
+      traverseSubdirectory subdirPath = do
         contents <- listDirectory subdirPath
         for_ contents $ \file' ->
-          handle @IOException (\_ -> pure ()) $ do
+          handle @FixIOException (\_ -> pure ()) $ do
             let file = subdirPath <> "/" <> file'
             canonicalPath <- canonicalizePath file
             classification <- classifyFile canonicalPath
             case classification of
               FileTypeOther -> pure ()
-              FileTypeRegularFile ->
-                modifyIORef resultRef (\results -> action file : results)
+              FileTypeRegularFile -> action file
               FileTypeDirectory -> do
                 alreadyProcessed <- haveSeenDirectory file
                 unless alreadyProcessed $ do
                   addDirectoryToSeen file
-                  traverseSubDirectory file
-  traverseSubDirectory (dropSuffix "/" rootPath)
-  readIORef resultRef
+                  traverseSubdirectory file
+  traverseSubdirectory (dropSuffix "/" rootPath)
+
+traverseDirectory' :: FilePath -> (FilePath -> a) -> IO [a]
+traverseDirectory' rootPath action = do
+  resultsRef <- newIORef []
+  traverseDirectory rootPath $ \file -> do
+    modifyIORef resultsRef (action file :)
+  readIORef resultsRef
 
 countBytes :: FilePath -> IO (FilePath, Integer)
 countBytes path = do
   bytes <- fromIntegral . BS.length <$> BS.readFile path
   pure (path, bytes)
+
+longestContents :: FilePath -> IO ByteString
+longestContents rootPath = do
+  contentsRef <- newIORef BS.empty
+  let takeLongetsFile a b =
+        if BS.length a >= BS.length b
+          then a
+          else b
+
+  traverseDirectory rootPath $ \file -> do
+    contents <- BS.readFile file
+    modifyIORef contentsRef (takeLongetsFile contents)
+
+  readIORef contentsRef
 
 main :: IO ()
 main = putStrLn "Hello, Haskell!"
