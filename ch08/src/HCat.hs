@@ -1,4 +1,3 @@
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -25,7 +24,7 @@ data ScreenDimensions = ScreenDimensions
   }
   deriving (Show)
 
-data Action = Next | Previous | Cancel deriving (Eq, Show)
+data ContinueCancel = Continue | Cancel deriving (Eq, Show)
 
 data FileInfo = FileInfo
   { filePath :: FilePath,
@@ -38,36 +37,31 @@ data FileInfo = FileInfo
   deriving (Show)
 
 -- truncate args to first arg
-handleArgs :: IO (Either String [FilePath])
+handleArgs :: IO (Either String FilePath)
 handleArgs =
   parseArgs <$> Env.getArgs
   where
     parseArgs argumentList =
       case argumentList of
+        [fname] -> Right fname
         [] -> Left "Error: No arguments provided!"
-        fnames -> Right fnames
+        _ -> Left "multiple files not supported"
 
 runHCat :: IO ()
 runHCat = do
-  targetFilePaths <- do
+  targetFilePath <- do
     args <- handleArgs
     eitherToErr args
 
   contents <- do
-    handles <- traverse (`openFile` ReadMode) targetFilePaths
-    traverse TextIO.hGetContents handles
+    handle <- openFile targetFilePath ReadMode
+    TextIO.hGetContents handle
 
   termSize <- getTerminalSize
   hSetBuffering stdout NoBuffering
-  -- rather than read all files at once
-  -- iterate through filenames, and read the files one at a time
-  finfo <- traverse fileInfo targetFilePaths
-  let all = zip finfo contents
-  let pages = concatMap (uncurry (paginate termSize)) all
-  -- think about updating what i'm sending to showpages dynamically
-  -- rather than "prerendering" everything, this will help with
-  -- terminal sizing as well
-  showPages [] pages
+  finfo <- fileInfo targetFilePath
+  let pages = paginate termSize finfo contents
+  showPages pages
 
 eitherToErr :: (Show a) => Either a b -> IO b
 eitherToErr (Right a) = return a
@@ -132,31 +126,24 @@ getTerminalSize =
           cols' = readWithDefault (init cols) defaultCols
        in return $ ScreenDimensions lines' cols'
 
-getAction :: IO Action
-getAction = do
+getContinue :: IO ContinueCancel
+getContinue = do
   hSetBuffering stdin NoBuffering
   hSetEcho stdin False
   c <- getChar
-
   case c of
-    'p' -> return Previous
-    ' ' -> return Next
+    ' ' -> return Continue
     'q' -> return Cancel
-    _ -> getAction
+    _ -> getContinue
 
-showPages :: [Text.Text] -> [Text.Text] -> IO ()
-showPages _ [] = return ()
-showPages prev (curr : next) = do
+showPages :: [Text.Text] -> IO ()
+showPages [] = return ()
+showPages (page : pages) = do
   clearScreen
-  TextIO.putStrLn curr
-  p <- getAction
-
-  case p of
-    Previous -> showPages next' prev'
-      where
-        (nextPage : prev') = prev
-        next' = nextPage : (curr : prev)
-    Next -> showPages (curr : prev) next
+  TextIO.putStrLn page
+  c <- getContinue
+  case c of
+    Continue -> showPages pages
     Cancel -> return ()
 
 clearScreen :: IO ()

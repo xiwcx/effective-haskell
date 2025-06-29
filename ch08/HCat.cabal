@@ -16,5 +16,5 @@ library
 executable hcat
   hs-source-dirs: app
   main-is: Main.hs
-  build-depends: base, hcat
+  build-depends: base, hcat 
   default-language: Haskell2010
