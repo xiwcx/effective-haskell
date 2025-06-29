@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeApplications #-}
 
@@ -8,17 +9,18 @@ import Control.Monad
 import Data.Foldable
 import Data.IORef
 import Data.List
-import qualified Data.Map.Strict as Map
+import Data.Map.Strict qualified as Map
 import Data.Maybe
-import qualified Data.Set as Set
-import qualified Data.Text as Text
-import qualified Data.Text.IO as TextIO
+import Data.Set qualified as Set
+import Data.Text qualified as Text
+import Data.Text.IO qualified as TextIO
 import Data.Time.Clock
   ( diffUTCTime,
     getCurrentTime,
     nominalDiffTimeToSeconds,
   )
 import System.Directory
+import System.Environment
 import Text.Printf
 
 data AppMetrics = AppMetrics
@@ -52,6 +54,27 @@ timeFunction :: Metrics -> String -> IO a -> IO a
 timeFunction (Metrics metrics) actionName action = do
   startTime <- getCurrentTime
   result <- action
+  endTime <- getCurrentTime
+
+  modifyIORef metrics $ \oldMetrics ->
+    let oldDurationValue =
+          fromMaybe 0 $ Map.lookup actionName (callDuration oldMetrics)
+
+        runDuration =
+          floor . nominalDiffTimeToSeconds $ diffUTCTime endTime startTime
+
+        newDurationValue = oldDurationValue + runDuration
+     in oldMetrics
+          { callDuration =
+              Map.insert actionName newDurationValue $ callDuration oldMetrics
+          }
+
+  pure result
+
+timePureFunction :: Metrics -> String -> a -> IO a
+timePureFunction (Metrics metrics) actionName action = do
+  startTime <- getCurrentTime
+  result <- pure $! action
   endTime <- getCurrentTime
 
   modifyIORef metrics $ \oldMetrics ->
@@ -140,6 +163,7 @@ directorySummaryWithMetrics root = do
     putStrLn $ file <> ":"
     contents <-
       timeFunction metrics "TextIO.readFile" $
+        -- this reads files in to memory every time
         TextIO.readFile file
 
     timeFunction metrics "wordcount" $
@@ -150,8 +174,18 @@ directorySummaryWithMetrics root = do
       oldHistogram <- readIORef histogramRef
       let addCharToHistogram histogram letter =
             Map.insertWith (+) letter 1 histogram
+          -- this is lazy by default, creating a thunk
+          -- of the earlier function that is storing everything in memory
+          -- this thunk will hold on to everything it needs for
+          -- eventual computation
+          --
+          -- the prime or `'` suffixed vesion of a function is typically
+          -- a strict (e.g. non-lazy) version of the same function. by
+          -- convention only.
           newHistogram = Text.foldl' addCharToHistogram oldHistogram contents
-      writeIORef histogramRef newHistogram
+      -- writeIORef histogramRef newHistogram
+      -- newHistogram `seq` writeIORef histogramRef newHistogram
+      writeIORef histogramRef $! newHistogram
   histogram <- readIORef histogramRef
   putStrLn "Histogram Data:"
   for_ (Map.toList histogram) $ \(letter, count) ->
@@ -191,5 +225,33 @@ printHelloAndMetrics = do
   successfullyPrintHello
   printMetrics
 
+-- =========================================================================
+
 main :: IO ()
-main = putStrLn "Hello, Haskell!"
+main = getArgs >>= directorySummaryWithMetrics . head
+
+characterCounter :: FilePath -> IO (Text.Text -> Int)
+characterCounter filePath = do
+  haystack <- TextIO.readFile filePath
+  pure $ \needle ->
+    Text.count needle haystack
+      + Text.count needle (Text.pack filePath)
+
+someExample :: FilePath -> IO (IORef Int)
+someExample path = do
+  countRef <- newIORef 0
+  let somePath = complicatedPathFinding path
+  counter <- characterCounter somePath
+  -- weak head normal form is when every member of an expression
+  -- has been evaluated, freeing all references in memory to be
+  -- garbage collected
+  -- writeIORef countRef (counter " ")
+  modifyIORef' countRef (const $ counter " ")
+  pure countRef
+  where
+    complicatedPathFinding :: FilePath -> FilePath
+    complicatedPathFinding p =
+      let path' = p <> "/some/path"
+       in if path' `elem` ["/some/path", "/some/other/path"]
+            then path'
+            else complicatedPathFinding path'

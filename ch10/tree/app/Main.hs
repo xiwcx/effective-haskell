@@ -6,11 +6,11 @@ import Control.Exception (IOException, handle)
 import Control.Exception.Base (FixIOException (FixIOException))
 import Control.Monad (join, unless, void, when)
 import Data.ByteString (ByteString)
-import qualified Data.ByteString as BS
+import Data.ByteString qualified as BS
 import Data.Foldable (for_)
 import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
 import Data.List (isSuffixOf)
-import qualified Data.Set as Set (empty, insert, member)
+import Data.Set qualified as Set (empty, insert, member)
 import System.Directory
   ( canonicalizePath,
     doesDirectoryExist,
@@ -84,7 +84,17 @@ traverseDirectory' :: FilePath -> (FilePath -> a) -> IO [a]
 traverseDirectory' rootPath action = do
   resultsRef <- newIORef []
   traverseDirectory rootPath $ \file -> do
-    modifyIORef resultsRef (action file :)
+    let result = action file
+    modifyIORef resultsRef (result :)
+  readIORef resultsRef
+
+-- Exercise 10.1
+traverseDirectoryIO :: FilePath -> (FilePath -> IO a) -> IO [a]
+traverseDirectoryIO rootPath action = do
+  resultsRef <- newIORef []
+  traverseDirectory rootPath $ \file -> do
+    result <- action file
+    modifyIORef resultsRef (result :)
   readIORef resultsRef
 
 countBytes :: FilePath -> IO (FilePath, Integer)
