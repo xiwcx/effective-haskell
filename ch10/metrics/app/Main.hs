@@ -9,11 +9,11 @@ import Control.Monad
 import Data.Foldable
 import Data.IORef
 import Data.List
-import Data.Map.Strict qualified as Map
+import qualified Data.Map.Strict as Map
 import Data.Maybe
-import Data.Set qualified as Set
-import Data.Text qualified as Text
-import Data.Text.IO qualified as TextIO
+import qualified Data.Set as Set
+import qualified Data.Text as Text
+import qualified Data.Text.IO as TextIO
 import Data.Time.Clock
   ( diffUTCTime,
     getCurrentTime,
@@ -30,6 +30,7 @@ data AppMetrics = AppMetrics
   }
   deriving (Eq, Show)
 
+-- this allows us to separate structure from implementation
 newtype Metrics = Metrics {appMetricsStore :: IORef AppMetrics}
 
 newMetrics :: IO Metrics
@@ -184,14 +185,29 @@ directorySummaryWithMetrics root = do
           -- convention only.
           newHistogram = Text.foldl' addCharToHistogram oldHistogram contents
       -- writeIORef histogramRef newHistogram
-      -- newHistogram `seq` writeIORef histogramRef newHistogram
-      writeIORef histogramRef $! newHistogram
+      modifyIORef' histogramRef (const newHistogram)
   histogram <- readIORef histogramRef
   putStrLn "Histogram Data:"
   for_ (Map.toList histogram) $ \(letter, count) ->
     putStrLn $ printf "    %c: %d" letter count
 
   displayMetrics metrics
+
+-- writeIORef
+--
+--  871,176,214,808 bytes allocated in the heap
+--    4,936,266,808 bytes copied during GC
+--    1,341,477,608 bytes maximum residency (22 sample(s))
+--      130,211,096 bytes maximum slop
+--             2999 MiB total memory in use (0 MiB lost due to fragmentation)
+
+-- modifyIORef'
+--
+--  871,237,981,456 bytes allocated in the heap
+--    7,816,709,504 bytes copied during GC
+--      153,689,856 bytes maximum residency (143 sample(s))
+--        3,357,008 bytes maximum slop
+--              482 MiB total memory in use (38 MiB lost due to fragmentation)
 
 -- =========================================================================
 
@@ -245,8 +261,8 @@ someExample path = do
   -- weak head normal form is when every member of an expression
   -- has been evaluated, freeing all references in memory to be
   -- garbage collected
-  -- writeIORef countRef (counter " ")
-  modifyIORef' countRef (const $ counter " ")
+  writeIORef countRef (counter " ")
+  -- modifyIORef' countRef (const $ counter " ")
   pure countRef
   where
     complicatedPathFinding :: FilePath -> FilePath
@@ -255,3 +271,14 @@ someExample path = do
        in if path' `elem` ["/some/path", "/some/other/path"]
             then path'
             else complicatedPathFinding path'
+
+-- =========================================================================
+
+-- Exercise 10.3
+
+data ImprovedMetricsStore = ImprovedMetricsStore
+  { iSuccessCount :: !Int,
+    iFailureCount :: !Int,
+    iCallDuration :: !(Map.Map String Int)
+  }
+  deriving (Eq, Show)

@@ -3,23 +3,18 @@
 module Main where
 
 import Control.Exception (IOException, handle)
-import Control.Exception.Base (FixIOException (FixIOException))
-import Control.Monad (join, unless, void, when)
 import Data.ByteString (ByteString)
-import Data.ByteString qualified as BS
+import qualified Data.ByteString as BS
 import Data.Foldable (for_)
-import Data.IORef (modifyIORef, newIORef, readIORef, writeIORef)
+import Data.IORef (modifyIORef, newIORef, readIORef)
 import Data.List (isSuffixOf)
-import Data.Set qualified as Set (empty, insert, member)
+import qualified Data.Set as Set (empty, insert, member)
 import System.Directory
   ( canonicalizePath,
     doesDirectoryExist,
     doesFileExist,
     listDirectory,
   )
-import System.Directory.Internal.Prelude (modifyIOError)
-import Text.ParserCombinators.ReadP (count)
-import Text.Printf (printf)
 
 dropSuffix :: String -> String -> String
 dropSuffix suffix s
@@ -52,7 +47,7 @@ naiveTraversal rootPath action = do
       pure results
   where
     fixPath parent fname = parent <> "/" <> fname
-    getPaths = mapM (\path -> naiveTraversal path action)
+    getPaths = mapM (`naiveTraversal` action)
 
 traverseDirectory :: FilePath -> (FilePath -> IO ()) -> IO ()
 traverseDirectory rootPath action = do
