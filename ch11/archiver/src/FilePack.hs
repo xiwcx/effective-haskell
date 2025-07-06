@@ -1,4 +1,6 @@
+{-# LANGUAGE ExistentialQuantification #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module FilePack where
@@ -28,6 +30,11 @@ data FileData a = FileData
     fileData :: a
   }
   deriving (Eq, Read, Show)
+
+-- an existential type, like the following allows you to work with a
+-- generic type, hidden aside from its constraints or implementation
+-- details
+data Packable = forall a. (Encode a) => Packable {getPackable :: FileData a}
 
 newtype FilePack a = FilePack {getPackedFiles :: [a]} deriving (Eq, Read, Show)
 
@@ -166,3 +173,110 @@ consWord32 word bytestring =
 
 someFunc :: IO ()
 someFunc = putStrLn "someFunc"
+
+-- EXISTENTIAL
+
+data SomeExistential b = forall a. SomeExistential
+  { someValue :: a,
+    modifyValue :: a -> a,
+    combineValues :: a -> a -> a,
+    consumeValue :: a -> b
+  }
+
+addAndMultiplyInt :: (Integral a) => a -> SomeExistential Int
+addAndMultiplyInt n =
+  SomeExistential
+    { someValue = n,
+      modifyValue = (+ n),
+      combineValues = (*),
+      consumeValue = fromIntegral
+    }
+
+runExistential :: SomeExistential a -> a
+runExistential (SomeExistential someV modifyV combineV consumeV) =
+  consumeV $ combineV (modifyV someV) someV
+
+reverseAndUnwordsString :: String -> SomeExistential String
+reverseAndUnwordsString s =
+  SomeExistential
+    { someValue = s,
+      modifyValue = reverse,
+      combineValues = \a b -> unwords [a, b],
+      consumeValue = id
+    }
+
+modifyExistential :: (a -> b) -> SomeExistential a -> SomeExistential b
+modifyExistential f (SomeExistential someV modifyV combineV consumeV) =
+  SomeExistential
+    { someValue = someV,
+      modifyValue = modifyV,
+      combineValues = combineV,
+      consumeValue = f . consumeV
+    }
+
+instance Functor SomeExistential where
+  fmap :: (a -> b) -> SomeExistential a -> SomeExistential b
+  fmap = modifyExistential
+
+constExistential :: Int -> SomeExistential Int
+constExistential n =
+  SomeExistential
+    { someValue = n,
+      modifyValue = const n,
+      combineValues = const $ const n,
+      consumeValue = const n
+    }
+
+data CanBeShown = forall a. (Show a) => CanBeShown a
+
+showWhatCanBeShown :: CanBeShown -> String
+showWhatCanBeShown (CanBeShown value) = show value
+
+instance Show CanBeShown where
+  show (CanBeShown a) = show a
+
+data ExistentialPackable = forall a. (Encode a) => ExistentialPackable {getExistentialPackable :: FileData a}
+
+instance Encode ExistentialPackable where
+  encode (ExistentialPackable p) = encode p
+
+newtype ExFilePack = ExFilePack [ExistentialPackable]
+
+instance Encode ExFilePack where
+  encode (ExFilePack p) = encode p
+
+addFileDataToPack :: (Encode a) => FileData a -> ExFilePack -> ExFilePack
+addFileDataToPack a (ExFilePack as) = ExFilePack $ ExistentialPackable a : as
+
+infixr 6 .:
+
+(.:) :: (Encode a) => FileData a -> ExFilePack -> ExFilePack
+(.:) = addFileDataToPack
+
+emptyFilePack :: ExFilePack
+emptyFilePack = ExFilePack []
+
+testEncodeValue :: ByteString
+testEncodeValue =
+  let a =
+        FileData
+          { fileName = "a",
+            fileSize = 3,
+            filePermissions = 0755,
+            fileData = "foo" :: String
+          }
+      b =
+        FileData
+          { fileName = "b",
+            fileSize = 10,
+            filePermissions = 0644,
+            fileData = ["hello", "world"] :: [Text]
+          }
+      c =
+        FileData
+          { fileName = "c",
+            fileSize = 8,
+            filePermissions = 0644,
+            fileData = (0, "zero") :: (Word32, String)
+          }
+   in encode $ a .: b .: c .: emptyFilePack
