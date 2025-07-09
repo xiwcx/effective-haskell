@@ -4,6 +4,7 @@
 module HCat where
 
 import qualified Control.Exception as Exception
+import Control.Monad (when)
 import Control.Monad.State
 import qualified Data.ByteString as BS
 import qualified Data.Text as Text
@@ -25,7 +26,7 @@ data ScreenDimensions = ScreenDimensions
   }
   deriving (Show)
 
-data Action = Continue | Cancel deriving (Eq, Show)
+data Action = Next | Previous | Cancel deriving (Eq, Show)
 
 data HCatState = HCatState
   { currentPageIndex :: Int,
@@ -88,19 +89,35 @@ showPage = do
   liftIO clearScreen
   -- get page
   currentState <- get
-  let currentPage = pages currentState !! currentPageIndex currentState
   -- print page to screen
-  liftIO $ TextIO.putStrLn currentPage
+  liftIO $ TextIO.putStrLn (safeGetPage currentState)
   -- wait for action
   action <- liftIO getAction
 
   case action of
-    Continue -> do
-      -- update state
-      modify (\state -> state {currentPageIndex = currentPageIndex state + 1})
-      -- make recursive call
-      showPage
+    Next -> updatePage (+ 1)
+    Previous -> updatePage (subtract 1)
     Cancel -> pure ()
+  where
+    inBounds :: Int -> Int -> Bool
+    inBounds index maxIndex = index >= 0 && index < maxIndex
+    updatePage :: (Int -> Int) -> HCat ()
+    updatePage operation = do
+      currentState <- get
+      let newIndex = operation (currentPageIndex currentState)
+      let pageCount = length (pages currentState)
+      when (inBounds newIndex pageCount) $ do
+        modify (\state -> state {currentPageIndex = newIndex})
+        showPage
+    -- | shouldn't be possible, but belt and suspenders
+    safeGetPage :: HCatState ->Text.Text
+    safeGetPage currentState = do
+      let pageQuantity = length (pages currentState)
+      let currentIndex = currentPageIndex currentState
+
+      if inBounds currentIndex pageQuantity
+        then pages currentState !! currentIndex
+        else "Error: Page index out of bounds"
 
 getAction :: IO Action
 getAction = do
@@ -108,8 +125,11 @@ getAction = do
   hSetEcho stdin False
   c <- getChar
   case c of
-    ' ' -> return Continue
+    ' ' -> return Next
+    'n' -> return Next
+    'p' -> return Previous
     'q' -> return Cancel
+    _ -> getAction
 
 eitherToErr :: (Show a) => Either a b -> IO b
 eitherToErr (Right a) = return a
