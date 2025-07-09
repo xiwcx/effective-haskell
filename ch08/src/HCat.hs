@@ -4,6 +4,7 @@
 module HCat where
 
 import qualified Control.Exception as Exception
+import Control.Monad.State
 import qualified Data.ByteString as BS
 import qualified Data.Text as Text
 import qualified Data.Text.IO as TextIO
@@ -24,7 +25,17 @@ data ScreenDimensions = ScreenDimensions
   }
   deriving (Show)
 
-data ContinueCancel = Continue | Cancel deriving (Eq, Show)
+data Action = Continue | Cancel deriving (Eq, Show)
+
+data HCatState = HCatState
+  { currentPageIndex :: Int,
+    screenDimensions :: ScreenDimensions,
+    file :: FileInfo,
+    pages :: [Text.Text]
+  }
+  deriving (Show)
+
+type HCat = StateT HCatState IO
 
 data FileInfo = FileInfo
   { filePath :: FilePath,
@@ -60,8 +71,45 @@ runHCat = do
   termSize <- getTerminalSize
   hSetBuffering stdout NoBuffering
   finfo <- fileInfo targetFilePath
-  let pages = paginate termSize finfo contents
-  showPages pages
+
+  let initialState =
+        HCatState
+          { currentPageIndex = 0,
+            screenDimensions = termSize,
+            file = finfo,
+            pages = paginate termSize finfo contents
+          }
+  _ <- runStateT showPage initialState
+  pure ()
+
+showPage :: HCat ()
+showPage = do
+  -- clear screen
+  liftIO clearScreen
+  -- get page
+  currentState <- get
+  let currentPage = pages currentState !! currentPageIndex currentState
+  -- print page to screen
+  liftIO $ TextIO.putStrLn currentPage
+  -- wait for action
+  action <- liftIO getAction
+
+  case action of
+    Continue -> do
+      -- update state
+      modify (\state -> state {currentPageIndex = currentPageIndex state + 1})
+      -- make recursive call
+      showPage
+    Cancel -> pure ()
+
+getAction :: IO Action
+getAction = do
+  hSetBuffering stdin NoBuffering
+  hSetEcho stdin False
+  c <- getChar
+  case c of
+    ' ' -> return Continue
+    'q' -> return Cancel
 
 eitherToErr :: (Show a) => Either a b -> IO b
 eitherToErr (Right a) = return a
@@ -125,26 +173,6 @@ getTerminalSize =
       let lines' = read $ init lines
           cols' = readWithDefault (init cols) defaultCols
        in return $ ScreenDimensions lines' cols'
-
-getContinue :: IO ContinueCancel
-getContinue = do
-  hSetBuffering stdin NoBuffering
-  hSetEcho stdin False
-  c <- getChar
-  case c of
-    ' ' -> return Continue
-    'q' -> return Cancel
-    _ -> getContinue
-
-showPages :: [Text.Text] -> IO ()
-showPages [] = return ()
-showPages (page : pages) = do
-  clearScreen
-  TextIO.putStrLn page
-  c <- getContinue
-  case c of
-    Continue -> showPages pages
-    Cancel -> return ()
 
 clearScreen :: IO ()
 clearScreen =
