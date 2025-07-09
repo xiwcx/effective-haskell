@@ -88,9 +88,9 @@ showPage = do
   -- clear screen
   liftIO clearScreen
   -- get page
-  currentState <- get
+  pageContent <- safeGetPage
   -- print page to screen
-  liftIO $ TextIO.putStrLn (safeGetPage currentState)
+  liftIO $ TextIO.putStrLn pageContent
   -- wait for action
   action <- liftIO getAction
 
@@ -106,18 +106,20 @@ showPage = do
       currentState <- get
       let newIndex = operation (currentPageIndex currentState)
       let pageCount = length (pages currentState)
+
       when (inBounds newIndex pageCount) $ do
         modify (\state -> state {currentPageIndex = newIndex})
         showPage
     -- | shouldn't be possible, but belt and suspenders
-    safeGetPage :: HCatState ->Text.Text
-    safeGetPage currentState = do
+    safeGetPage :: HCat Text.Text
+    safeGetPage = do
+      currentState <- get
       let pageQuantity = length (pages currentState)
       let currentIndex = currentPageIndex currentState
 
       if inBounds currentIndex pageQuantity
-        then pages currentState !! currentIndex
-        else "Error: Page index out of bounds"
+        then return $ pages currentState !! currentIndex
+        else return "Error: Page index out of bounds"
 
 getAction :: IO Action
 getAction = do
