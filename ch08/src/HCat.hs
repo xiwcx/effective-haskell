@@ -1,3 +1,4 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 
@@ -85,41 +86,36 @@ runHCat = do
 
 showPage :: HCat ()
 showPage = do
-  -- clear screen
   liftIO clearScreen
-  -- get page
-  pageContent <- safeGetPage
-  -- print page to screen
-  liftIO $ TextIO.putStrLn pageContent
-  -- wait for action
-  action <- liftIO getAction
-
-  case action of
+  safeGetPage >>= liftIO . TextIO.putStrLn
+  liftIO getAction >>= \case
     Next -> updatePage (+ 1)
     Previous -> updatePage (subtract 1)
     Cancel -> pure ()
-  where
-    inBounds :: Int -> Int -> Bool
-    inBounds index maxIndex = index >= 0 && index < maxIndex
-    updatePage :: (Int -> Int) -> HCat ()
-    updatePage operation = do
-      currentState <- get
-      let newIndex = operation (currentPageIndex currentState)
-      let pageCount = length (pages currentState)
 
-      when (inBounds newIndex pageCount) $ do
-        modify (\state -> state {currentPageIndex = newIndex})
-        showPage
-    -- | shouldn't be possible, but belt and suspenders
-    safeGetPage :: HCat Text.Text
-    safeGetPage = do
-      currentState <- get
-      let pageQuantity = length (pages currentState)
-      let currentIndex = currentPageIndex currentState
+inBounds :: Int -> Int -> Bool
+inBounds index maxIndex = index >= 0 && index < maxIndex
 
-      if inBounds currentIndex pageQuantity
-        then return $ pages currentState !! currentIndex
-        else return "Error: Page index out of bounds"
+updatePage :: (Int -> Int) -> HCat ()
+updatePage operation = do
+  currentState <- get
+  let newIndex = operation (currentPageIndex currentState)
+  let pageCount = length (pages currentState)
+
+  when (inBounds newIndex pageCount) $ do
+    modify (\state -> state {currentPageIndex = newIndex})
+    showPage
+
+-- \| shouldn't be possible, but belt and suspenders
+safeGetPage :: HCat Text.Text
+safeGetPage = do
+  currentState <- get
+  let pageQuantity = length (pages currentState)
+  let currentIndex = currentPageIndex currentState
+
+  if inBounds currentIndex pageQuantity
+    then return $ pages currentState !! currentIndex
+    else return "Error: Page index out of bounds"
 
 getAction :: IO Action
 getAction = do
