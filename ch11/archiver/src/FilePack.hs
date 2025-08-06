@@ -280,3 +280,10 @@ testEncodeValue =
             fileData = (0, "zero") :: (Word32, String)
           }
    in encode $ a .: b .: c .: emptyFilePack
+
+-- Exercises
+
+-- 11.1 hints
+-- - api considerations: order of arguments, building combinators
+-- - combinator as function or class and instance
+-- -

@@ -74,6 +74,10 @@ runHCat = do
   hSetBuffering stdout NoBuffering
   finfo <- fileInfo targetFilePath
 
+  -- multiple signals:
+  -- FRP (Functional Reactive Programmin)
+  -- normalize effects in to a single queue/bus
+
   let initialState =
         HCatState
           { currentPageIndex = 0,
@@ -106,7 +110,7 @@ updatePage operation = do
     modify (\state -> state {currentPageIndex = newIndex})
     showPage
 
--- \| shouldn't be possible, but belt and suspenders
+-- | shouldn't be possible, but belt and suspenders
 safeGetPage :: HCat Text.Text
 safeGetPage = do
   currentState <- get

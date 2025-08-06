@@ -4,6 +4,7 @@
 
 module Main where
 
+import Control.Concurrent
 import Control.Exception
 import Control.Monad
 import Data.Foldable
@@ -21,6 +22,7 @@ import Data.Time.Clock
   )
 import System.Directory
 import System.Environment
+import System.IO.Unsafe
 import Text.Printf
 
 data AppMetrics = AppMetrics
@@ -72,9 +74,13 @@ timeFunction (Metrics metrics) actionName action = do
 
   pure result
 
+-- Exercise 10.2
 timePureFunction :: Metrics -> String -> a -> IO a
 timePureFunction (Metrics metrics) actionName action = do
   startTime <- getCurrentTime
+  -- this won't work on anything that has a container
+  -- would need to exhaustively recurse in to any structure
+  -- https://hackage.haskell.org/package/deepseq
   result <- pure $! action
   endTime <- getCurrentTime
 
@@ -282,3 +288,17 @@ data ImprovedMetricsStore = ImprovedMetricsStore
     iCallDuration :: !(Map.Map String Int)
   }
   deriving (Eq, Show)
+
+-- try something like:
+
+slowFive :: Int
+slowFive = unsafePerformIO $ do
+  threadDelay 1000000
+  pure 5
+
+data StrictMaybe a = StrictNothing | StrictJust !a
+  deriving (Show)
+
+instance Functor StrictMaybe where
+  fmap _ StrictNothing = StrictNothing
+  fmap f (StrictJust x) = StrictJust (f x)
